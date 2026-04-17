@@ -20,9 +20,12 @@ jobs:
             -e CB_USER="${{ secrets.CB_USER }}" \
             -e CB_PASSWORD="${{ secrets.CB_PASSWORD }}" \
             -e CB_BUCKET="${{ secrets.CB_BUCKET }}" \
-            -e CB_SCOPE="${{ secrets.CB_SCOPE }}" \
             -e R2_ACCESS_KEY_ID="${{ secrets.R2_ACCESS_KEY_ID }}" \
             -e R2_SECRET_ACCESS_KEY="${{ secrets.R2_SECRET_ACCESS_KEY }}" \
             -e R2_ENDPOINT="${{ secrets.R2_ENDPOINT }}" \
             -e R2_BUCKET="${{ secrets.R2_BUCKET }}" \
+            -e EXPORT_DIR="/tmp/export" \
+            -e EXPORT_FILE="raw_data.json" \
+            -e ARCHIVE_NAME="couchbase_backup_$(date +%Y%m%d).tar.gz" \
+            -e SCOPE_FIELD="type" \
             ghcr.io/sdad454f/capella-backup:latest
