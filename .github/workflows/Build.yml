@@ -20,4 +20,4 @@ jobs:
           context: .
           file: ./Dockerfile   # ← 关键点
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/capella-backup:latest
+          tags: ghcr.io/${{ github.repository_owner }}/wee4rt55353323p:latest
