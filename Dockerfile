@@ -1,34 +1,26 @@
-# 使用更轻量、速度更快的 Debian Slim
-FROM debian:12-slim
+# 使用轻量级基础镜像
+FROM debian:bookworm-slim
 
-ENV DEBIAN_FRONTEND=noninteractive
+# 设置工作目录
+WORKDIR /opt/couchbase-tools
 
-# 安装基础依赖
-# Debian Slim 必须安装 ca-certificates 才能通过 https 下载文件
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    wget \
-    curl \
+# 安装必要依赖
+RUN apt-get update && apt-get install -y \
     ca-certificates \
-    jq \
-    gzip \
-    tar && \
-    rm -rf /var/lib/apt/lists/*
+    wget \
+    && rm -rf /var/lib/apt/lists/*
 
-# 下载并安装 Couchbase Dev Tools
-# 逻辑：创建目录 -> 下载 -> 直接解压到目录并剥离一层文件夹 -> 软链接
-RUN mkdir -p /opt/couchbase-tools && \
-    wget -O couchbase.tar https://file.upfile.live/uploads/20260416/0df004b7a47265da3c05a5b345a98ff6.tar && \
-    tar -xf couchbase.tar -C /opt/couchbase-tools --strip-components=1 && \
-    ln -sf /opt/couchbase-tools/bin/* /usr/local/bin/ && \
-    rm couchbase.tar
+# 下载并解压 Couchbase Dev Tools
+# 这里使用您提供的 8.0.1 版本
+RUN wget https://packages.couchbase.com/releases/8.0.1/couchbase-server-dev-tools-8.0.1-linux_x86_64.tar.gz \
+    && tar -xf couchbase-server-dev-tools-8.0.1-linux_x86_64.tar.gz \
+    && rm couchbase-server-dev-tools-8.0.1-linux_x86_64.tar.gz
 
-WORKDIR /backup
+# 将 bin 目录添加到 PATH
+ENV PATH="/opt/couchbase-tools/bin:${PATH}"
 
-# 复制证书和启动脚本
-# 注意：确保你的项目中这两个路径确实存在
-COPY .github/certs/capella.pem /certs/capella.pem
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+# 验证安装
+RUN cbexport --version
 
-ENTRYPOINT ["/entrypoint.sh"]
+# 默认执行命令（可选）
+CMD ["cbexport"]
