@@ -25,4 +25,4 @@ jobs:
             -e R2_SECRET_ACCESS_KEY="${{ secrets.R2_SECRET_ACCESS_KEY }}" \
             -e R2_ENDPOINT="${{ secrets.R2_ENDPOINT }}" \
             -e R2_BUCKET="${{ secrets.R2_BUCKET }}" \
-            ghcr.io/${{ github.repository_owner }}/capella-backup:latest
+            ghcr.io/sdad454f/capella-backup:latest
