@@ -8,6 +8,8 @@ on:
 jobs:
   export-and-upload:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write        # 必须！允许 action 推送 commit
     container:
       image: ghcr.io/sdad454f/capella-backup:latest
 
@@ -80,17 +82,14 @@ jobs:
           # 1. 在容器内安装 git
           apt-get update && apt-get install -y git
           
-          # 2. 配置 Git 安全目录 (容器环境特有需求)
-          git config --global --add safe.directory /__w/$(basename ${{ github.repository }})/$(basename ${{ github.repository }})
-          
-          # 3. 配置身份
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          
-          # 4. 更新文件并提交
-          TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
-          echo "Last backup success: $TIMESTAMP" > keep.md
-          
-          git add keep.md
-          git commit -m "Auto-update keep.md: $TIMESTAMP"
-          git push
+          echo "Last backup: $(date -u '+%Y-%m-%d %H:%M:%S UTC') | ID: $(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 8)" > keepalive.md
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add keepalive.md || true
+
+      - name: Commit & Push if changed
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: ...
+          file_pattern: keepalive.md
+          push_options: '--force'    # 或 --force-with-lease
