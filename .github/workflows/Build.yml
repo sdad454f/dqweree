@@ -1,0 +1,26 @@
+name: Build Capella Backup Image
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Build Docker image
+        run: |
+          docker build -t capella-backup .
+
+      - name: Push image to GHCR
+        run: |
+          docker tag capella-backup ghcr.io/${{ github.repository_owner }}/capella-backup:latest
+          docker push ghcr.io/${{ github.repository_owner }}/capella-backup:latest
