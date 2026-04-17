@@ -3,18 +3,19 @@ name: Export Couchbase to R2
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 2 * * *' # 每天凌晨2点自动运行
+    - cron: '0 2 * * *'
 
 jobs:
   export-and-upload:
     runs-on: ubuntu-latest
     permissions:
-      contents: write        # 必须！允许 action 推送 commit
+      contents: write
+
     container:
       image: ghcr.io/sdad454f/capella-backup:latest
+      options: --workdir /github/workspace
 
     steps:
-      # 必须检出代码才能执行最后的 Push 操作
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
@@ -32,16 +33,14 @@ jobs:
           R2_SECRET_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
         run: |
-          set -e # 脚本执行出错立即停止
+          set -e
 
-          # 1. 环境准备
           echo "${{ secrets.CB_CACERT_CONTENT }}" > /tmp/ca.pem
           RAW_FILE="backup-code-dl.json"
           GZ_FILE="${RAW_FILE}.gz"
 
-          # 2. 执行导出
           echo "正在从 Couchbase 导出数据..."
-          if cbexport json \
+          cbexport json \
             --cluster "couchbases://$CB_CLUSTER" \
             --bucket "$CB_BUCKET" \
             --username "$CB_USER" \
@@ -51,54 +50,39 @@ jobs:
             --output "$RAW_FILE" \
             --include-key include_key_id \
             --scope-field "$CB_SCOPE" \
-            --threads 4; then
-            echo "导出成功！"
-          else
-            echo "错误：Couchbase 导出失败！"
-            exit 1
-          fi
+            --threads 4
 
-          # 3. 压缩文件
           echo "正在压缩文件..."
           gzip -9 "$RAW_FILE"
 
-          # 4. 上传到 R2
           apt-get update && apt-get install -y rclone
-          
+
           export RCLONE_CONFIG_R2_TYPE=s3
           export RCLONE_CONFIG_R2_PROVIDER=Cloudflare
           export RCLONE_CONFIG_R2_ACCESS_KEY_ID="$R2_ACCESS_KEY"
           export RCLONE_CONFIG_R2_SECRET_ACCESS_KEY="$R2_SECRET_KEY"
           export RCLONE_CONFIG_R2_ENDPOINT="$R2_ENDPOINT"
           export RCLONE_CONFIG_R2_REGION=auto
-          
+
           echo "开始上传 $GZ_FILE 到 R2..."
-          # 使用 --s3-no-check-bucket 解决 403 Access Denied 问题
           rclone copy "$GZ_FILE" R2:"$R2_BUCKET"/couchbase-backups/ --s3-no-check-bucket
           echo "R2 上传完成！"
 
       - name: Keep Repository Alive
         run: |
-          # 1. 安装 git
           apt-get update && apt-get install -y git
 
-          # 2. 关键：切换到 GitHub 默认的工作空间目录
-          # GitHub Actions 会把检出的代码挂载到这个环境变量指向的路径
-          cd "$GITHUB_WORKSPACE"
+          cd /github/workspace
 
-          # 3. 信任该目录（防止容器跨用户权限错误）
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          
-          # 4. 覆盖写入单条随机内容
+          git config --global --add safe.directory /github/workspace
+
           echo "Last backup: $(date -u '+%Y-%m-%d %H:%M:%S UTC') | ID: $(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 8)" > keepalive.md
 
-          # 5. 配置身份并提交
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          
+
           git add keepalive.md
-          
-          # 检查是否有变化，有则提交并推送
+
           if ! git diff --quiet --exit-code --cached; then
             git commit -m "Auto-keepalive: $(date -u +%F)"
             git push
