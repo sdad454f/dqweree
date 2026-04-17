@@ -36,7 +36,7 @@ jobs:
           # 3. 执行导出
           cbexport json \
             --cluster "couchbases://$CB_CLUSTER" \
-            --bucket "$CB_USER" \
+            --bucket "$CB_BUCKET" \
             --username "$CB_USER" \
             --password "$CB_PASS" \
             --cacert /tmp/ca.pem \
