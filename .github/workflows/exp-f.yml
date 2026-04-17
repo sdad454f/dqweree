@@ -1,4 +1,4 @@
-name: Export Couchbase to R2
+name: F Couchbase to R2
 
 on:
   workflow_dispatch:
