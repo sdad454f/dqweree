@@ -1,0 +1,104 @@
+name: Export Couchbase to R2
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 2 * * *'
+
+jobs:
+  export-and-upload:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Cache Couchbase Dev Tools
+        id: cbtools-cache
+        uses: actions/cache@v4
+        with:
+          path: couchbase-tools
+          key: cbtools-8.0.1
+
+      - name: Install Couchbase Dev Tools (cbexport)
+        if: steps.cbtools-cache.outputs.cache-hit != 'true'
+        run: |
+          set -e
+          mkdir -p couchbase-tools
+          cd couchbase-tools
+
+          wget https://packages.couchbase.com/releases/8.0.1/couchbase-server-dev-tools-8.0.1-linux_x86_64.tar.gz
+          tar -xf couchbase-server-dev-tools-8.0.1-linux_x86_64.tar.gz
+          rm couchbase-server-dev-tools-8.0.1-linux_x86_64.tar.gz
+
+      - name: Link cbexport to PATH
+        run: |
+          set -e
+          BIN_PATH=$(find couchbase-tools -type d -name "bin")
+          echo "Found bin at: $BIN_PATH"
+
+          sudo chmod +x $BIN_PATH/*
+          sudo ln -sf $PWD/$BIN_PATH/* /usr/local/bin/
+
+          cbexport --version
+
+      - name: Export, Compress and Upload
+        env:
+          CB_CLUSTER: ${{ secrets.CB_F_HOST }}
+          CB_BUCKET: ${{ secrets.CB_BUCKET }}
+          CB_USER: ${{ secrets.CB_USER }}
+          CB_PASS: ${{ secrets.CB_PASSWORD }}
+          CB_SCOPE: ${{ secrets.CB_SCOPE }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ACCESS_KEY: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          set -e
+
+          echo "${{ secrets.CB_CACERT_CONTENT }}" > /tmp/ca.pem
+          RAW_FILE="backup-code-f.json"
+          GZ_FILE="${RAW_FILE}.gz"
+
+          cbexport json \
+            --cluster "couchbases://$CB_CLUSTER" \
+            --bucket "$CB_BUCKET" \
+            --username "$CB_USER" \
+            --password "$CB_PASS" \
+            --cacert /tmp/ca.pem \
+            --format list \
+            --output "$RAW_FILE" \
+            --include-key include_key_id \
+            --scope-field "$CB_SCOPE" \
+            --threads 4
+
+          gzip -9 "$RAW_FILE"
+
+          sudo apt-get update && sudo apt-get install -y rclone
+
+          export RCLONE_CONFIG_R2_TYPE=s3
+          export RCLONE_CONFIG_R2_PROVIDER=Cloudflare
+          export RCLONE_CONFIG_R2_ACCESS_KEY_ID="$R2_ACCESS_KEY"
+          export RCLONE_CONFIG_R2_SECRET_ACCESS_KEY="$R2_SECRET_KEY"
+          export RCLONE_CONFIG_R2_ENDPOINT="$R2_ENDPOINT"
+          export RCLONE_CONFIG_R2_REGION=auto
+
+          rclone copy "$GZ_FILE" R2:"$R2_BUCKET"/couchbase-backups/ --s3-no-check-bucket
+
+      - name: Keep Repository Alive
+        run: |
+          echo "Last backup: $(date -u '+%Y-%m-%d %H:%M:%S UTC') | ID: $(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 8)" > keepalive.md
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add keepalive.md
+
+          if ! git diff --quiet --exit-code --cached; then
+            git commit -m "Auto-keepalive: $(date -u +%F)"
+            git push
+          else
+            echo "No changes to commit"
+          fi
