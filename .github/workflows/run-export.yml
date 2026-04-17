@@ -1,52 +1,66 @@
 name: Export Couchbase to R2
 
 on:
-  workflow_dispatch: # 手动触发
-  # schedule:
-  #   - cron: '0 2 * * *' # 每天凌晨2点自动运行
+  workflow_dispatch:
+  schedule:
+    - cron: '0 2 * * *' # 每天凌晨2点自动运行
 
 jobs:
   export-and-upload:
     runs-on: ubuntu-latest
-    # 使用你刚刚构建好的镜像
     container:
       image: ghcr.io/sdad454f/capella-backup:latest
 
     steps:
-      - name: Export and Upload to R2
+      # 必须检出代码才能执行最后的 Push 操作
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Export, Compress and Upload
         env:
-          # Couchbase 变量
           CB_CLUSTER: ${{ secrets.CB_HOST }}
           CB_BUCKET: ${{ secrets.CB_BUCKET }}
           CB_USER: ${{ secrets.CB_USER }}
           CB_PASS: ${{ secrets.CB_PASSWORD }}
           CB_SCOPE: ${{ secrets.CB_SCOPE }}
-          # Cloudflare R2 变量
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_ACCESS_KEY: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
         run: |
-          # 1. 创建临时证书文件 (如果是 Capella 云端通常需要)
+          set -e # 脚本执行出错立即停止
+
+          # 1. 环境准备
           echo "${{ secrets.CB_CACERT_CONTENT }}" > /tmp/ca.pem
+          RAW_FILE="backup-code-dl.json"
+          GZ_FILE="${RAW_FILE}.gz"
 
-          # 2. 生成文件名
-          FILENAME="backup-code-dl.json"
-
-          # 3. 执行导出
-          cbexport json \
+          # 2. 执行导出
+          echo "正在从 Couchbase 导出数据..."
+          if cbexport json \
             --cluster "couchbases://$CB_CLUSTER" \
             --bucket "$CB_BUCKET" \
             --username "$CB_USER" \
             --password "$CB_PASS" \
             --cacert /tmp/ca.pem \
             --format list \
-            --output "$FILENAME" \
+            --output "$RAW_FILE" \
             --include-key include_key_id \
             --scope-field "$CB_SCOPE" \
-            --threads 4
+            --threads 4; then
+            echo "导出成功！"
+          else
+            echo "错误：Couchbase 导出失败！"
+            exit 1
+          fi
 
-          # 4. 上传到 R2 (这里使用 rclone，如果镜像里没装，可以现场装一个)
+          # 3. 压缩文件
+          echo "正在压缩文件..."
+          gzip -9 "$RAW_FILE"
+
+          # 4. 上传到 R2
           apt-get update && apt-get install -y rclone
           
           export RCLONE_CONFIG_R2_TYPE=s3
@@ -54,7 +68,25 @@ jobs:
           export RCLONE_CONFIG_R2_ACCESS_KEY_ID="$R2_ACCESS_KEY"
           export RCLONE_CONFIG_R2_SECRET_ACCESS_KEY="$R2_SECRET_KEY"
           export RCLONE_CONFIG_R2_ENDPOINT="$R2_ENDPOINT"
+          export RCLONE_CONFIG_R2_REGION=auto
           
-          echo "开始上传 $FILENAME 到 R2..."
-          rclone copy "$FILENAME" R2:"$R2_BUCKET"/couchbase-backups/
-          echo "上传完成！"
+          echo "开始上传 $GZ_FILE 到 R2..."
+          # 使用 --s3-no-check-bucket 解决 403 Access Denied 问题
+          rclone copy "$GZ_FILE" R2:"$R2_BUCKET"/couchbase-backups/ --s3-no-check-bucket
+          echo "R2 上传完成！"
+
+      - name: Keep Repository Alive
+        run: |
+          # 只有在之前的步骤都成功时才会运行
+          git config --global --add safe.directory /__w/$(basename ${{ github.repository }})/$(basename ${{ github.repository }})
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
+          RANDOM_STR=$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 8)
+          
+          echo "Last backup success: $TIMESTAMP ($RANDOM_STR)" > keep.md
+          
+          git add keep.md
+          git commit -m "Auto-update keep.md: $TIMESTAMP"
+          git push
