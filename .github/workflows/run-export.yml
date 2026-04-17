@@ -77,15 +77,19 @@ jobs:
 
       - name: Keep Repository Alive
         run: |
-          # 只有在之前的步骤都成功时才会运行
+          # 1. 在容器内安装 git
+          apt-get update && apt-get install -y git
+          
+          # 2. 配置 Git 安全目录 (容器环境特有需求)
           git config --global --add safe.directory /__w/$(basename ${{ github.repository }})/$(basename ${{ github.repository }})
+          
+          # 3. 配置身份
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
+          # 4. 更新文件并提交
           TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
-          RANDOM_STR=$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 8)
-          
-          echo "Last backup success: $TIMESTAMP ($RANDOM_STR)" > keep.md
+          echo "Last backup success: $TIMESTAMP" > keep.md
           
           git add keep.md
           git commit -m "Auto-update keep.md: $TIMESTAMP"
