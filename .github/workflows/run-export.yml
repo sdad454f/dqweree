@@ -79,17 +79,29 @@ jobs:
 
       - name: Keep Repository Alive
         run: |
-          # 1. 在容器内安装 git
+          # 1. 安装 git
           apt-get update && apt-get install -y git
+
+          # 2. 关键：切换到 GitHub 默认的工作空间目录
+          # GitHub Actions 会把检出的代码挂载到这个环境变量指向的路径
+          cd "$GITHUB_WORKSPACE"
+
+          # 3. 信任该目录（防止容器跨用户权限错误）
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           
+          # 4. 覆盖写入单条随机内容
           echo "Last backup: $(date -u '+%Y-%m-%d %H:%M:%S UTC') | ID: $(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 8)" > keepalive.md
+
+          # 5. 配置身份并提交
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add keepalive.md || true
-
-      - name: Commit & Push if changed
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: ...
-          file_pattern: keepalive.md
-          push_options: '--force'    # 或 --force-with-lease
+          
+          git add keepalive.md
+          
+          # 检查是否有变化，有则提交并推送
+          if ! git diff --quiet --exit-code --cached; then
+            git commit -m "Auto-keepalive: $(date -u +%F)"
+            git push
+          else
+            echo "No changes to commit"
+          fi
