@@ -3,16 +3,17 @@ FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && \
-    apt-get install -y ca-certificates jq gzip tar && \
+    apt-get install -y wget curl ca-certificates jq gzip tar && \
     rm -rf /var/lib/apt/lists/*
 
-# 直接使用你上传的 dev-tools 包（不再下载）
-COPY tools/couchbase-server-dev-tools-8.0.1-linux_x86_64.tar.gz /tmp/devtools.tar.gz
-
-RUN tar -xzf /tmp/devtools.tar.gz -C /opt && \
-    mv /opt/couchbase-server-dev-tools-8.0.1-linux_x86_64 /opt/couchbase-tools && \
+# 下载官方 dev-tools（包含 cbexport）
+# 使用 -O 统一命名，并去掉 -z 让 tar 自动识别格式
+RUN wget -O couchbase.tar https://file.upfile.live/uploads/20260416/0df004b7a47265da3c05a5b345a98ff6.tar && \
+    tar -xf couchbase.tar && \
+    # 假设解压出的目录以 couchbase-server 开头
+    mv couchbase-server-* /opt/couchbase-tools && \
     ln -s /opt/couchbase-tools/bin/* /usr/local/bin/ && \
-    rm /tmp/devtools.tar.gz
+    rm couchbase.tar
 
 WORKDIR /backup
 
