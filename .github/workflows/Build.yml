@@ -1,6 +1,8 @@
 name: Build Capella Backup Image
 
 on:
+  push:
+    branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
@@ -15,10 +17,9 @@ jobs:
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
       - name: Build Docker image
-        run: |
-          docker build -t capella-backup .
+        run: docker build -t capella-backup .
 
       - name: Push image to GHCR
         run: |
-          docker tag capella-backup ghcr.io/${{ github.repository_owner }}/capella-backup:latest
-          docker push ghcr.io/${{ github.repository_owner }}/capella-backup:latest
+          docker tag capella-backup ghcr.io/${{ github.actor }}/capella-backup:latest
+          docker push ghcr.io/${{ github.actor }}/capella-backup:latest
