@@ -3,6 +3,11 @@ name: Build Capella Backup Image
 on:
   workflow_dispatch:
 
+# 必须显式声明权限，否则无法推送镜像到 GHCR
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -12,12 +17,18 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Login to GHCR
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./Dockerfile   # ← 关键点
+          file: ./Dockerfile
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/wee4rt55353323p:latest
+          # 自动处理小写：使用变量处理确保路径合法
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/capella-backup:latest
