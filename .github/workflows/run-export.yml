@@ -3,7 +3,7 @@ name: Export Couchbase to R2
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 2 * * *'
+    - cron: '0 17 * * *'
 
 jobs:
   export-and-upload:
