@@ -26,6 +26,6 @@ jobs:
             -e R2_BUCKET="${{ secrets.R2_BUCKET }}" \
             -e EXPORT_DIR="/tmp/export" \
             -e EXPORT_FILE="raw_data.json" \
-            -e ARCHIVE_NAME="couchbase_backup_$(date +%Y%m%d).tar.gz" \
-            -e SCOPE_FIELD="type" \
+            -e ARCHIVE_NAME="couchbase_backup_bl.tar.gz" \
+            -e SCOPE_FIELD="${{ secrets.CB_SCOPE }}" \
             ghcr.io/sdad454f/capella-backup:latest
