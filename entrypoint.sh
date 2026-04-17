@@ -22,7 +22,7 @@ EOF
 mkdir -p "${EXPORT_DIR}"
 
 echo "Exporting NDJSON from Couchbase Capella..."
-cbexport json \
+if ! cbexport json \
   --cluster couchbases://${CB_HOST} \
   --bucket ${CB_BUCKET} \
   --username ${CB_USER} \
@@ -32,22 +32,35 @@ cbexport json \
   --include-key include_key_id \
   --scope-field ${SCOPE_FIELD} \
   --cacert /certs/capella.pem \
-  --threads 4
+  --threads 4; then
+    echo "❌ Export failed. Aborting."
+    exit 1
+fi
 
 echo "Splitting NDJSON by collection..."
 mkdir -p "${EXPORT_DIR}/collections"
 
-while IFS= read -r line; do
+if ! while IFS= read -r line; do
   collection=$(echo "$line" | jq -r ".${SCOPE_FIELD} | split(\"/\") | .[1]")
   echo "$line" >> "${EXPORT_DIR}/collections/${collection}.json"
-done < "${EXPORT_DIR}/${EXPORT_FILE}"
+done < "${EXPORT_DIR}/${EXPORT_FILE}"; then
+    echo "❌ Split failed. Aborting."
+    exit 1
+fi
 
 echo "Creating archive..."
 cd "${EXPORT_DIR}/collections"
-tar -czf "/backup/${ARCHIVE_NAME}" *.json
+
+if ! tar -czf "/backup/${ARCHIVE_NAME}" *.json; then
+    echo "❌ Archive creation failed. Aborting."
+    exit 1
+fi
 
 echo "Uploading to R2..."
-rclone copy "/backup/${ARCHIVE_NAME}" r2:${R2_BUCKET}/ \
-  --s3-no-check-bucket --checksum -q
+if ! rclone copy "/backup/${ARCHIVE_NAME}" r2:${R2_BUCKET}/ \
+  --s3-no-check-bucket --checksum -q; then
+    echo "❌ Upload failed."
+    exit 1
+fi
 
-echo "Done."
+echo "✅ Done."
