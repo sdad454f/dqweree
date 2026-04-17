@@ -11,15 +11,38 @@ jobs:
     permissions:
       contents: write
 
-    container:
-      image: ghcr.io/sdad454f/capella-backup:latest
-      options: --workdir /github/workspace
-
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+
+      - name: Cache Couchbase Dev Tools
+        id: cbtools-cache
+        uses: actions/cache@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          path: couchbase-tools
+          key: cbtools-8.0.1
+
+      - name: Install Couchbase Dev Tools (cbexport)
+        if: steps.cbtools-cache.outputs.cache-hit != 'true'
+        run: |
+          set -e
+          mkdir -p couchbase-tools
+          cd couchbase-tools
+
+          wget https://packages.couchbase.com/releases/8.0.1/couchbase-server-dev-tools-8.0.1-linux_x86_64.tar.gz
+          tar -xf couchbase-server-dev-tools-8.0.1-linux_x86_64.tar.gz
+          rm couchbase-server-dev-tools-8.0.1-linux_x86_64.tar.gz
+
+      - name: Link cbexport to PATH
+        run: |
+          set -e
+          BIN_PATH=$(find couchbase-tools -type d -name "bin")
+          echo "Found bin at: $BIN_PATH"
+
+          sudo chmod +x $BIN_PATH/*
+          sudo ln -sf $PWD/$BIN_PATH/* /usr/local/bin/
+
+          cbexport --version
 
       - name: Export, Compress and Upload
         env:
@@ -39,7 +62,6 @@ jobs:
           RAW_FILE="backup-code-dl.json"
           GZ_FILE="${RAW_FILE}.gz"
 
-          echo "正在从 Couchbase 导出数据..."
           cbexport json \
             --cluster "couchbases://$CB_CLUSTER" \
             --bucket "$CB_BUCKET" \
@@ -52,10 +74,9 @@ jobs:
             --scope-field "$CB_SCOPE" \
             --threads 4
 
-          echo "正在压缩文件..."
           gzip -9 "$RAW_FILE"
 
-          apt-get update && apt-get install -y rclone
+          sudo apt-get update && sudo apt-get install -y rclone
 
           export RCLONE_CONFIG_R2_TYPE=s3
           export RCLONE_CONFIG_R2_PROVIDER=Cloudflare
@@ -64,18 +85,10 @@ jobs:
           export RCLONE_CONFIG_R2_ENDPOINT="$R2_ENDPOINT"
           export RCLONE_CONFIG_R2_REGION=auto
 
-          echo "开始上传 $GZ_FILE 到 R2..."
           rclone copy "$GZ_FILE" R2:"$R2_BUCKET"/couchbase-backups/ --s3-no-check-bucket
-          echo "R2 上传完成！"
 
       - name: Keep Repository Alive
         run: |
-          apt-get update && apt-get install -y git
-
-          cd /github/workspace
-
-          git config --global --add safe.directory /github/workspace
-
           echo "Last backup: $(date -u '+%Y-%m-%d %H:%M:%S UTC') | ID: $(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 8)" > keepalive.md
 
           git config user.name "github-actions[bot]"
