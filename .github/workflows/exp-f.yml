@@ -98,6 +98,7 @@ jobs:
 
           if ! git diff --quiet --exit-code --cached; then
             git commit -m "Auto-keepalive: $(date -u +%F)"
+            git pull --rebase
             git push
           else
             echo "No changes to commit"
